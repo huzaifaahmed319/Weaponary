@@ -459,7 +459,7 @@ button, input, textarea { font-family: inherit; letter-spacing: inherit; }
     <span class="brand-name">Allied Thumbnails</span>
   </div>
   <nav class="header-nav">
-    <span class="nav-pill">Pipeline v1.3</span>
+    <span class="nav-pill">Pipeline v1.4</span>
     <span class="nav-item active">Pipeline</span>
     <button class="theme-toggle" id="themeToggle">☾ Dark</button>
   </nav>
@@ -659,8 +659,8 @@ button, input, textarea { font-family: inherit; letter-spacing: inherit; }
         </div>
         <div class="toggle-row">
           <div>
-            <div class="toggle-info-name">Auto-Apply Banner & Arrow</div>
-            <div class="toggle-info-desc">Overlay red banner box and curved arrow on output</div>
+            <div class="toggle-info-name">Auto-Generate Banner</div>
+            <div class="toggle-info-desc">AI bakes red banner with selected word into thumbnail (~50-70% success rate)</div>
           </div>
           <div class="switch" id="overlayToggle"></div>
         </div>
@@ -1512,9 +1512,59 @@ function dataUrlToInlineData(dataUrl) {
   return { inline_data: { mime_type: mimeType, data: base64 } };
 }
 
-async function generateThumbnail(style, weaponRefs, googleKey, model) {
+const BANNER_INSTRUCTION_TEMPLATE = (bannerWord) => `
+
+============================================
+BANNER OVERLAY (REQUIRED — RENDER THIS DIRECTLY INTO THE IMAGE):
+============================================
+
+Add a bold red banner box at the TOP of the frame. Choose the position that best fits the composition:
+- If the vehicle/weapon is positioned to the right side of the frame → place banner at TOP-LEFT
+- If the vehicle/weapon is positioned to the left side of the frame → place banner at TOP-RIGHT
+- If vehicle is centered → place banner at TOP-LEFT as default
+- Banner should NOT overlap or cover the main vehicle/weapon
+
+BANNER BOX SPECIFICATIONS:
+- Background color: Bright pure red (#dc2626 / vibrant red, NOT crimson, NOT maroon, NOT dark red)
+- Shape: Clean rectangular block, NO rounded corners, NO border
+- Width: Sized to fit the text snugly with tight padding (banner takes 25-35% of frame width)
+- Top edge of banner: 4-8% down from frame top edge
+
+BANNER TEXT:
+- Word to render: "${bannerWord}"
+- Text color: Pure white (#ffffff)
+- Font style: Bold sans-serif similar to Montserrat Bold or Helvetica Bold (clean, modern, geometric, slightly condensed)
+- Text case: ALL UPPERCASE
+- Letter spacing: Slightly tight (compressed letter spacing, NOT wide tracking)
+- Text padding inside box: tight — roughly 8-12% of text height on left/right sides, 6-8% on top/bottom
+- Text must be CRISP, SHARP, perfectly legible — no blur, no distortion
+
+CRITICAL — SUBTLE BLACK GLOW BEHIND BANNER:
+- Add a soft black drop shadow / glow extending OUTSIDE the red banner box
+- Glow size: ~15-20 pixels of soft spread
+- Glow opacity: ~50-60% black
+- Glow offset: very slight downward (2-3 pixels)
+- This creates separation between the banner and the background
+- The glow should be SOFT and DIFFUSED, NOT a hard black outline
+- NO white border, NO inner stroke — only the external soft black shadow
+
+CRITICAL TEXT ACCURACY:
+- The banner text must read EXACTLY: "${bannerWord}"
+- Spell every letter correctly — this is non-negotiable
+- Do not abbreviate, modify, stylize, or alter the word
+- Use clean, readable letter forms — no decorative effects, no 3D extrusion, no metallic finish
+
+The banner should look like a bold red callout that pops off the thumbnail with a soft dark halo behind it for separation. Reference: think YouTube military history thumbnails where a red banner with white bold text floats at the top with a subtle dark glow making it stand out.`;
+
+async function generateThumbnail(style, weaponRefs, googleKey, model, bannerWord) {
   const styleRefUrls = STYLE_REFS[style] || [];
-  const stylePrompt = STYLE_PROMPTS[style];
+  let stylePrompt = STYLE_PROMPTS[style];
+
+  // Inject banner instructions if banner overlay is enabled and we have a word
+  if (state.overlayEnabled && bannerWord) {
+    stylePrompt = stylePrompt + BANNER_INSTRUCTION_TEMPLATE(bannerWord);
+  }
+
   const parts = [];
   for (const url of styleRefUrls) parts.push(await urlToInlineData(url));
   for (const ref of weaponRefs) if (ref) parts.push(dataUrlToInlineData(ref));
@@ -1577,7 +1627,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
   const promises = styles.map(async (style) => {
     const tile = outputGrid.querySelector(`[data-style="${style}"]`);
     try {
-      const imageUrl = await generateThumbnail(style, weaponRefs, googleKey, state.imageModel);
+      const imageUrl = await generateThumbnail(style, weaponRefs, googleKey, state.imageModel, banner);
       tile.classList.remove('loading');
       tile.innerHTML = `
         <img src="${imageUrl}" alt="${STYLE_NAMES[style]}">
@@ -1597,7 +1647,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
         tile.classList.add('loading');
         tile.innerHTML = `<span>Regenerating ${STYLE_NAMES[style]}...</span>`;
         try {
-          const newUrl = await generateThumbnail(style, weaponRefs, googleKey, state.imageModel);
+          const newUrl = await generateThumbnail(style, weaponRefs, googleKey, state.imageModel, banner);
           state.sessionSpend += cost;
           document.getElementById('sessionSpend').textContent = `$${state.sessionSpend.toFixed(3)}`;
           tile.classList.remove('loading');
@@ -1641,7 +1691,7 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-console.log('Allied Thumbnails v1.3 — Banner freshness, title length validation, longer SEO');
+console.log('Allied Thumbnails v1.4 — Banner generation toggle, Montserrat-style with subtle glow');
 </script>
 </body>
 </html>
